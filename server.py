@@ -2,7 +2,7 @@
 """
 Local web UI สำหรับเช็คว่า branch ปลายทางมี "ของ" จากทุก MR ในไฟล์ CSV ครบไหม
 
-รันแบบ local เท่านั้น (ไม่ได้ deploy ขึ้นเน็ต) — เปิดเบราว์เซอร์ไปที่ http://127.0.0.1:8765
+รันแบบ local เท่านั้น (ไม่ได้ deploy ขึ้นเน็ต) — เปิดเบราว์เซอร์ไปที่ http://127.0.0.1:8899
 Token ที่กรอกในหน้าเว็บจะถูกส่งมาที่ server ตัวนี้ (ซึ่งรันอยู่บนเครื่องคุณเอง) เท่านั้น
 แล้ว server เป็นคนยิงไปหา GitLab API ต่อ (กันปัญหา CORS จากการยิง fetch ตรงจากเบราว์เซอร์)
 
@@ -815,7 +815,7 @@ if __name__ == "__main__":
     import os
     import sys
 
-    port = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 8766))
+    port = int(os.environ.get("PORT", sys.argv[1] if len(sys.argv) > 1 else 8899))
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"Open http://127.0.0.1:{port} in your browser  (Ctrl+C to stop)")
     server.serve_forever()

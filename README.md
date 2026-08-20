@@ -28,9 +28,9 @@ cd mr-check-web
 python3 server.py
 ```
 
-Then open **http://127.0.0.1:8766** in your browser.
+Then open **http://127.0.0.1:8899** in your browser.
 
-If port 8766 is already in use, override it:
+If port 8899 is already in use, override it:
 ```bash
 python3 server.py 9000
 # or

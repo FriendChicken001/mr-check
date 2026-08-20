@@ -10,8 +10,10 @@ GitLab มี commit จากทุก MR ในไฟล์ CSV ครบห�
 ## หลักการที่ต้องรักษาไว้ (อย่าเปลี่ยนโดยไม่ถามก่อน)
 
 - **รันแบบ local เท่านั้น** — ห้าม deploy ขึ้น public URL, ห้ามเพิ่ม auth/hosting
-  โดยไม่ถามผู้ใช้ก่อน เพราะการตัดสินใจตอนคุยกันคือให้เป็น local tool ที่แชร์กันด้วย
-  การแจกโฟลเดอร์ ไม่ใช่ web service ที่ deploy จริง
+  โดยไม่ถามผู้ใช้ก่อน เพราะการตัดสินใจตอนคุยกันคือให้เป็น local tool ที่แต่ละคนรันเอง
+  บนเครื่องตัวเอง ไม่ใช่ web service ที่ deploy จริง — source code แจกกันผ่าน private
+  git repo (clone แล้วรัน `python3 server.py` เอง) แทนการแจกโฟลเดอร์ตรงๆ แต่หลักการ
+  ยังเหมือนเดิมคือรันบน `127.0.0.1` เท่านั้น
 - **ไม่มี dependency ภายนอก** — `server.py` ใช้แค่ Python standard library
   (`http.server`, `urllib`, `csv`, `json`, `ssl`) จงใจไม่ใช้ Flask/FastAPI หรือ
   npm/Next.js เพราะต้องรันได้ทันทีด้วย `python3 server.py` บนเครื่อง macOS โดยไม่ต้อง
