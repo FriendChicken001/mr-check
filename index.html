@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>MR Branch Checker</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f7f8;
+    --panel: #ffffff;
+    --text: #1a1a1a;
+    --muted: #666;
+    --border: #ddd;
+    --ok: #1a7f37;
+    --miss: #c0392b;
+    --skip: #8a6d00;
+    --warn: #b35900;
+    --error: #999;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a;
+      --panel: #212227;
+      --text: #eaeaea;
+      --muted: #9a9a9a;
+      --border: #3a3b40;
+      --ok: #3fb950;
+      --miss: #f85149;
+      --skip: #d4a72c;
+      --warn: #e3924b;
+      --error: #8b8b8b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: var(--muted); margin-top: 0; font-size: 14px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  input[type=text], input[type=password] {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+  input[type=file] { margin-bottom: 14px; font-size: 13px; }
+  .row { display: flex; gap: 16px; }
+  .row > div { flex: 1; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .checkbox-row input { width: auto; margin: 0; }
+  .checkbox-row label { margin: 0; font-weight: 400; font-size: 13px; color: var(--muted); }
+  button {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button:hover:not(:disabled) { background: #1d4ed8; }
+  .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .filter-row label { margin: 0; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .filter-row select, .filter-row input[type=text] {
+    box-sizing: border-box;
+    height: 34px;
+    line-height: 32px;
+    padding: 0 10px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    max-width: 100%;
+  }
+  .filter-row input[type=text] { flex: 1; min-width: 160px; }
+  .summary {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+  }
+  .chip {
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+  }
+  .chip.clickable { cursor: pointer; user-select: none; }
+  .chip.clickable:hover { border-color: currentColor; }
+  .chip.active {
+    border-color: currentColor;
+    box-shadow: 0 0 0 1.5px currentColor;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  td.status { font-weight: 700; white-space: nowrap; }
+  .st-OK { color: var(--ok); }
+  .st-MISS { color: var(--miss); }
+  .st-SKIP { color: var(--skip); }
+  .st-WARN { color: var(--warn); }
+  .st-ERROR { color: var(--error); }
+  .st-NO_MR { color: var(--muted); }
+  a { color: inherit; }
+  #status-line { color: var(--muted); font-size: 13px; margin-top: 8px; min-height: 18px; }
+  .table-wrap { overflow-x: auto; }
+  .link-btn {
+    background: none;
+    border: none;
+    color: #2563eb;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0;
+    font-weight: 400;
+  }
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    max-width: 1000px;
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .modal-header h2 { font-size: 15px; margin: 0; }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text);
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+  }
+  .modal-body { overflow-y: auto; padding: 14px 18px; }
+  .diff-file { margin-bottom: 18px; }
+  .diff-file-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .diff-block {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.5;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .diff-line { display: flex; }
+  .diff-lineno {
+    flex: 0 0 auto;
+    width: 3.5em;
+    padding: 0 8px;
+    text-align: right;
+    color: var(--muted);
+    opacity: 0.6;
+    user-select: none;
+    border-right: 1px solid var(--border);
+  }
+  .diff-lineno:first-child { border-right: 1px solid var(--border); }
+  .diff-linetext { padding: 0 8px; white-space: pre; flex: 1 1 auto; }
+  .diff-hunk .diff-lineno { border-right-color: transparent; }
+  .diff-add { background: rgba(63,185,80,0.15); }
+  .diff-add-missing { background: rgba(227,146,75,0.28); }
+  .diff-del { background: rgba(248,81,73,0.15); }
+  .diff-hunk { color: var(--muted); background: rgba(128,128,128,0.1); }
+  .diff-file-note { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .detail-list { margin: 0; padding-left: 16px; }
+  .detail-list li { margin-bottom: 4px; }
+  .detail-list li:last-child { margin-bottom: 0; }
+  .ticket-count {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .ticket-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .ticket-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 2px 0;
+  }
+  .ticket-row + .ticket-row { border-top: 1px solid var(--border); padding-top: 4px; }
+  .ticket-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  a.ticket-key { color: #2563eb; text-decoration: none; }
+  a.ticket-key:hover { text-decoration: underline; }
+  .ticket-badge { font-weight: 700; flex-shrink: 0; }
+  .ticket-badge.ticket-match { color: var(--ok); }
+  .ticket-badge.ticket-mismatch { color: var(--miss); }
+  .ticket-found-note { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  #progressWrap { margin-top: 12px; }
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--border);
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: #2563eb;
+    transition: width 0.2s ease;
+  }
+  .progress-text { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .live-log {
+    margin-top: 8px;
+    max-height: 140px;
+    overflow-y: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .live-log div:last-child { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MR Branch Checker</h1>
+  <p class="sub">Check whether the target branch has every MR from a CSV file merged in — runs on your own machine (localhost) only</p>
+
+  <div class="panel">
+    <label for="token">GitLab Personal Access Token (needs read_api scope)</label>
+    <input type="password" id="token" placeholder="glpat-xxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+
+    <div class="row">
+      <div>
+        <label for="branch">Target branch</label>
+        <input type="text" id="branch" placeholder="e.g. release/3.5.0 or master" />
+      </div>
+      <div>
+        <label for="csvfile">CSV file (must have an "MR" column with merge request URLs)</label>
+        <input type="file" id="csvfile" accept=".csv" />
+      </div>
+    </div>
+
+    <button id="runBtn">Check now</button>
+    <div id="status-line"></div>
+
+    <div id="progressWrap" style="display:none;">
+      <div class="progress-bar"><div class="progress-bar-fill" id="progressFill"></div></div>
+      <div id="progressText" class="progress-text"></div>
+      <div id="liveLog" class="live-log"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="resultPanel" style="display:none;">
+    <div class="filter-row">
+      <label for="searchBox">Search</label>
+      <input type="text" id="searchBox" placeholder="ticket, MR, project, title, detail..." />
+    </div>
+    <div class="filter-row">
+      <label for="teamFilter">Team</label>
+      <select id="teamFilter"><option value="">All teams</option></select>
+      <label for="repoFilter">Project</label>
+      <select id="repoFilter"><option value="">All projects</option></select>
+    </div>
+    <div class="summary" id="summary"></div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Status</th><th>Team</th><th>Ticket</th><th>MR</th><th>Project</th><th>Title</th><th>Detail</th><th></th></tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="diffModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="diffModalTitle">Diff</h2>
+      <button class="modal-close" id="diffModalClose">&times;</button>
+    </div>
+    <div class="modal-body" id="diffModalBody"></div>
+  </div>
+</div>
+
+<script>
+const runBtn = document.getElementById('runBtn');
+const statusLine = document.getElementById('status-line');
+const resultPanel = document.getElementById('resultPanel');
+const summaryEl = document.getElementById('summary');
+const resultsBody = document.getElementById('resultsBody');
+const repoFilter = document.getElementById('repoFilter');
+const teamFilter = document.getElementById('teamFilter');
+const searchBox = document.getElementById('searchBox');
+const progressWrap = document.getElementById('progressWrap');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+const liveLog = document.getElementById('liveLog');
+
+let allResults = [];
+
+function logLine(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  liveLog.appendChild(div);
+  liveLog.scrollTop = liveLog.scrollHeight;
+  // keep the DOM from growing unbounded on a big CSV
+  while (liveLog.children.length > 300) liveLog.removeChild(liveLog.firstChild);
+}
+
+function setProgress(done, total) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  progressFill.style.width = pct + '%';
+  progressText.textContent = `${done}/${total} MRs checked (${pct}%)`;
+}
+
+repoFilter.addEventListener('change', () => renderTable());
+teamFilter.addEventListener('change', () => renderTable());
+searchBox.addEventListener('input', () => renderTable());
+
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsText(file);
+  });
+}
+
+runBtn.addEventListener('click', async () => {
+  const token = document.getElementById('token').value.trim();
+  const branch = document.getElementById('branch').value.trim();
+  const fileInput = document.getElementById('csvfile');
+
+  if (!token || !branch || !fileInput.files.length) {
+    statusLine.textContent = 'Please fill in the token, target branch, and select a CSV file';
+    return;
+  }
+
+  runBtn.disabled = true;
+  statusLine.textContent = 'Checking...';
+  resultPanel.style.display = 'none';
+  progressWrap.style.display = 'block';
+  liveLog.innerHTML = '';
+  setProgress(0, 0);
+
+  const streamedResults = [];
+
+  try {
+    const csvText = await readFileAsText(fileInput.files[0]);
+    const resp = await fetch('/api/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, target_branch: branch, csv_text: csvText }),
+    });
+
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({}));
+      statusLine.textContent = 'error: ' + (data.error || resp.statusText);
+      return;
+    }
+
+    let total = 0;
+    let done = 0;
+    let finalSummary = null;
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newlineIdx;
+      while ((newlineIdx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newlineIdx).trim();
+        buffer = buffer.slice(newlineIdx + 1);
+        if (!line) continue;
+
+        const event = JSON.parse(line);
+        if (event.type === 'start') {
+          total = event.total;
+          setProgress(0, total);
+          if (total === 0) logLine('No MR URLs found in that CSV.');
+        } else if (event.type === 'log') {
+          logLine(event.message);
+        } else if (event.type === 'result') {
+          done++;
+          streamedResults.push(event.result);
+          setProgress(done, total);
+        } else if (event.type === 'done') {
+          finalSummary = event.summary;
+        }
+      }
+    }
+
+    renderResults({ summary: finalSummary, results: streamedResults });
+    statusLine.textContent = 'Done';
+  } catch (e) {
+    statusLine.textContent = 'error: ' + e.message;
+  } finally {
+    runBtn.disabled = false;
+  }
+});
+
+function renderResults(data) {
+  allResults = data.results;
+
+  const projects = [...new Set(allResults.map(r => r.project).filter(Boolean))].sort();
+  const currentRepoSelection = repoFilter.value;
+  repoFilter.innerHTML = '<option value="">All projects</option>' +
+    projects.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+  repoFilter.value = projects.includes(currentRepoSelection) ? currentRepoSelection : '';
+
+  const teams = [...new Set(allResults.map(r => r.team).filter(Boolean))].sort();
+  const currentTeamSelection = teamFilter.value;
+  teamFilter.innerHTML = '<option value="">All teams</option>' +
+    teams.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+  teamFilter.value = teams.includes(currentTeamSelection) ? currentTeamSelection : '';
+
+  renderTable();
+}
+
+let statusFilterValue = '';
+
+function renderTable() {
+  let filtered = allResults;
+  if (repoFilter.value) filtered = filtered.filter(r => r.project === repoFilter.value);
+  if (teamFilter.value) filtered = filtered.filter(r => r.team === teamFilter.value);
+
+  const searchTerm = searchBox.value.trim().toLowerCase();
+  if (searchTerm) {
+    filtered = filtered.filter(r => [
+      r.ticket, r.url, r.iid ? `!${r.iid}` : '', r.project, r.title, r.detail, r.team,
+    ].some(field => (field || '').toLowerCase().includes(searchTerm)));
+  }
+
+  // Group by MR before counting, so tickets that share one MR count as a
+  // single row in the summary too — matching what's actually shown in the
+  // table, instead of counting the same MR once per ticket that shares it.
+  const groupedForSummary = groupByMr(filtered);
+
+  // Status summary is computed from the repo/team/search-filtered set (but not the
+  // status filter itself), so the chip counts stay meaningful as context
+  // while one status is selected.
+  const summary = {
+    total: groupedForSummary.length,
+    ok: groupedForSummary.filter(r => r.status === 'OK').length,
+    miss: groupedForSummary.filter(r => r.status === 'MISS').length,
+    skip: groupedForSummary.filter(r => r.status === 'SKIP').length,
+    warn: groupedForSummary.filter(r => r.status === 'WARN').length,
+    error: groupedForSummary.filter(r => r.status === 'ERROR').length,
+    no_mr: groupedForSummary.filter(r => r.status === 'NO_MR').length,
+  };
+
+  const chip = (status, label, count) => {
+    const active = statusFilterValue === status ? ' active' : '';
+    const cls = status ? `st-${status}` : '';
+    return `<span class="chip clickable ${cls}${active}" data-status="${status}">${label}: ${count}</span>`;
+  };
+
+  summaryEl.innerHTML =
+    chip('', 'Total', summary.total) +
+    chip('OK', 'OK', summary.ok) +
+    chip('MISS', 'MISS', summary.miss) +
+    chip('SKIP', 'Not merged', summary.skip) +
+    chip('WARN', 'WARN', summary.warn) +
+    chip('ERROR', 'ERROR', summary.error) +
+    chip('NO_MR', 'No MR', summary.no_mr);
+
+  summaryEl.querySelectorAll('.chip[data-status]').forEach(el => {
+    el.addEventListener('click', () => {
+      const status = el.dataset.status;
+      statusFilterValue = (statusFilterValue === status) ? '' : status;
+      renderTable();
+    });
+  });
+
+  if (statusFilterValue) {
+    filtered = filtered.filter(r => r.status === statusFilterValue);
+  }
+
+  const grouped = groupByMr(filtered);
+
+  const order = { MISS: 0, ERROR: 1, WARN: 2, SKIP: 3, OK: 4, NO_MR: 5 };
+  const sorted = [...grouped].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+
+  resultsBody.innerHTML = sorted.map((r, i) => `
+    <tr>
+      <td class="status st-${r.status}">${r.status}</td>
+      <td>${escapeHtml([...r.teams].join(', '))}</td>
+      <td>${renderTicketCell(r)}</td>
+      <td>${r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.iid ? '!' + r.iid : r.url}</a>` : '<span style="color:var(--muted);">—</span>'}</td>
+      <td>${r.project || ''}</td>
+      <td>${r.title || ''}</td>
+      <td>${renderDetail(r.detail)}</td>
+      <td>${r.url ? `<button class="link-btn" data-idx="${i}">View diff</button>` : ''}</td>
+    </tr>
+  `).join('');
+
+  resultsBody.querySelectorAll('button[data-idx]').forEach(btn => {
+    btn.addEventListener('click', () => openDiffModal(sorted[Number(btn.dataset.idx)]));
+  });
+
+  resultPanel.style.display = 'block';
+}
+
+// ---- diff modal ----
+
+const diffModal = document.getElementById('diffModal');
+const diffModalTitle = document.getElementById('diffModalTitle');
+const diffModalBody = document.getElementById('diffModalBody');
+document.getElementById('diffModalClose').addEventListener('click', closeDiffModal);
+diffModal.addEventListener('click', (e) => { if (e.target === diffModal) closeDiffModal(); });
+
+function closeDiffModal() {
+  diffModal.classList.remove('open');
+  diffModalBody.innerHTML = '';
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function renderDetail(detail) {
+  if (!detail) return '';
+  const lines = detail.split('\n').filter(l => l.trim());
+  if (lines.length <= 1) return escapeHtml(detail);
+  return `<ul class="detail-list">${lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>`;
+}
+
+// Groups result rows that share the same MR url into a single display row
+// (one MR can resolve several tickets — showing one row per ticket for the
+// same MR reads as confusing duplicates). Rows with no url (NO_MR) are never
+// grouped together, since each represents an unrelated ticket.
+function groupByMr(results) {
+  const map = new Map();
+  const order = [];
+  results.forEach((r, i) => {
+    const key = r.url || `__no_mr_${i}`;
+    if (!map.has(key)) {
+      map.set(key, { ...r, teams: new Set(), ticketEntries: [] });
+      order.push(key);
+    }
+    const g = map.get(key);
+    if (r.team) g.teams.add(r.team);
+    if (r.ticket) g.ticketEntries.push({ ticket: r.ticket, ticket_match: r.ticket_match, ticket_url: r.ticket_url });
+  });
+  return order.map(key => map.get(key));
+}
+
+function renderTicketCell(r) {
+  const entries = r.ticketEntries || [];
+  if (!entries.length) return '<span style="color:var(--muted);">—</span>';
+
+  const rows = entries.map(e => {
+    let badge = '';
+    if (e.ticket_match === true) {
+      badge = `<span class="ticket-badge ticket-match" title="Ticket key found in MR title/description/branch">✓</span>`;
+    } else if (e.ticket_match === false) {
+      badge = `<span class="ticket-badge ticket-mismatch" title="Ticket key NOT found in MR title/description/branch">✗</span>`;
+    }
+    const keyHtml = e.ticket_url
+      ? `<a class="ticket-key" href="${escapeHtml(e.ticket_url)}" target="_blank" rel="noopener">${escapeHtml(e.ticket)}</a>`
+      : `<span class="ticket-key">${escapeHtml(e.ticket)}</span>`;
+    return `<div class="ticket-row">${keyHtml}${badge}</div>`;
+  });
+
+  const countBadge = entries.length > 1
+    ? `<div class="ticket-count">${entries.length} tickets share this MR</div>`
+    : '';
+
+  let html = countBadge + `<div class="ticket-list">${rows.join('')}</div>`;
+
+  if (entries.some(e => e.ticket_match === false)) {
+    const found = (r.mr_tickets && r.mr_tickets.length) ? escapeHtml(r.mr_tickets.join(', ')) : 'none found';
+    html += `<div class="ticket-found-note">MR references: ${found}</div>`;
+  }
+  return html;
+}
+
+const HUNK_HEADER_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+
+function renderDiffText(diffText, targetLines) {
+  const targetSet = targetLines ? new Set(targetLines) : null;
+  let oldLine = 0;
+  let newLine = 0;
+
+  return (diffText || '').split('\n').map(line => {
+    let cls = '';
+    let oldNum = '';
+    let newNum = '';
+
+    if (line.startsWith('@@')) {
+      cls = 'diff-hunk';
+      const m = HUNK_HEADER_RE.exec(line);
+      if (m) {
+        oldLine = parseInt(m[1], 10);
+        newLine = parseInt(m[2], 10);
+      }
+    } else if (line.startsWith('+') && !line.startsWith('+++')) {
+      newNum = newLine;
+      newLine++;
+      if (targetSet) {
+        const stripped = line.slice(1).trim();
+        cls = (!stripped || targetSet.has(stripped)) ? 'diff-add' : 'diff-add-missing';
+      } else {
+        cls = 'diff-add';
+      }
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      cls = 'diff-del';
+      oldNum = oldLine;
+      oldLine++;
+    } else if (!line.startsWith('---') && !line.startsWith('+++')) {
+      // context line — present on both sides
+      oldNum = oldLine;
+      newNum = newLine;
+      oldLine++;
+      newLine++;
+    }
+
+    return `<div class="diff-line ${cls}">` +
+      `<span class="diff-lineno">${oldNum}</span>` +
+      `<span class="diff-lineno">${newNum}</span>` +
+      `<span class="diff-linetext">${escapeHtml(line) || '&nbsp;'}</span>` +
+      `</div>`;
+  }).join('');
+}
+
+async function openDiffModal(row) {
+  const token = document.getElementById('token').value.trim();
+  const branch = document.getElementById('branch').value.trim();
+
+  diffModalTitle.textContent = row.title ? `${row.iid ? '!' + row.iid + ' — ' : ''}${row.title}` : 'Diff';
+  diffModalBody.innerHTML = 'Loading...';
+  diffModal.classList.add('open');
+
+  if (!token) {
+    diffModalBody.innerHTML = 'Token is required to fetch the diff.';
+    return;
+  }
+
+  try {
+    const resp = await fetch('/api/mr-diff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, url: row.url, target_branch: branch }),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      diffModalBody.innerHTML = escapeHtml('Error: ' + (data.error || resp.statusText));
+      return;
+    }
+
+    if (!data.files || !data.files.length) {
+      diffModalBody.innerHTML = 'No file changes found for this MR.';
+      return;
+    }
+
+    diffModalBody.innerHTML = `
+      <p style="color:var(--muted);font-size:12.5px;margin-top:0;">
+        Lines highlighted <span style="color:var(--ok);font-weight:600;">green</span> are already present
+        on <code>${escapeHtml(branch)}</code>; lines highlighted
+        <span style="color:var(--warn);font-weight:600;">orange</span> were added by this MR but were NOT
+        found there (line match, not a real diff).
+      </p>
+    ` + data.files.map(f => {
+      const tag = f.deleted_file ? ' (deleted)' : f.new_file ? ' (new file)' : f.renamed_file ? ' (renamed)' : '';
+      const targetNote = f.deleted_file
+        ? ''
+        : f.target_error
+          ? `<div class="diff-file-note">target (${escapeHtml(branch)}): ${escapeHtml(f.target_error)}</div>`
+          : `<div class="diff-file-note">compared against current ${escapeHtml(branch)}</div>`;
+      return `
+        <div class="diff-file">
+          <div class="diff-file-name">${escapeHtml(f.path)}${tag}</div>
+          ${targetNote}
+          <div class="diff-block">${renderDiffText(f.diff, f.target_lines)}</div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    diffModalBody.innerHTML = escapeHtml('Error: ' + e.message);
+  }
+}
+</script>
+</body>
+</html>
