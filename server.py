@@ -10,6 +10,7 @@ Token ที่กรอกในหน้าเว็บจะถูกส่�
     python3 server.py
 """
 
+import collections
 import csv
 import io
 import json
@@ -26,6 +27,33 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MR_URL_RE = re.compile(r"^https://([^/]+)/(.+)/-/merge_requests/(\d+)")
 
 INDEX_HTML_PATH = __file__.rsplit("/", 1)[0] + "/index.html"
+
+# The token must only ever be sent to the one GitLab host the user actually
+# means to query — never to an arbitrary host smuggled into an MR "URL" in
+# the CSV (or in a "View diff" request). A CSV always lists MRs from one
+# GitLab instance, so within a single /api/check run we pin the request to
+# whichever host most of its MR URLs point to (majority, not "the first
+# entry", so a single injected row can't hijack the pin on its own) and
+# refuse to contact anything else. /api/mr-diff has no CSV of its own to
+# pin against, so it's only ever allowed a host that a /api/check run in
+# this same server process already vetted.
+_vetted_hosts_lock = threading.Lock()
+_vetted_hosts = set()
+
+
+def _url_host(url):
+    m = MR_URL_RE.match(url)
+    return m.group(1) if m else None
+
+
+def _remember_vetted_host(host):
+    with _vetted_hosts_lock:
+        _vetted_hosts.add(host)
+
+
+def _is_vetted_host(host):
+    with _vetted_hosts_lock:
+        return host in _vetted_hosts
 
 # Live "which API is being called" log, for the /api/check stream. Each MR is
 # checked on its own worker thread (see check_mr_with_context below), and
@@ -669,10 +697,21 @@ class Handler(BaseHTTPRequestHandler):
         # repeated url, or a merged MR cell spanning several ticket rows) —
         # every association still gets its own result row in the output.
         no_mr_entries = [e for e in entries if e["url"] is None]
+
+        hosts = [h for h in (_url_host(e["url"]) for e in entries if e["url"]) if h]
+        expected_host = collections.Counter(hosts).most_common(1)[0][0] if hosts else None
+        if expected_host:
+            _remember_vetted_host(expected_host)
+
         by_url = {}
+        host_mismatch_entries = []
         for e in entries:
-            if e["url"] is not None:
-                by_url.setdefault(e["url"], []).append(e)
+            if e["url"] is None:
+                continue
+            if expected_host and _url_host(e["url"]) != expected_host:
+                host_mismatch_entries.append(e)
+                continue
+            by_url.setdefault(e["url"], []).append(e)
         unique_urls = list(by_url.keys())
 
         log_queue = queue.Queue()
@@ -683,6 +722,20 @@ class Handler(BaseHTTPRequestHandler):
                 result = _attach_association({
                     "url": None, "iid": None, "project": None, "title": "", "mr_tickets": [],
                     "status": "NO_MR", "detail": "No MR listed for this ticket in the CSV.",
+                }, entry)
+                results.append(result)
+                log_queue.put({"type": "result", "result": result})
+
+            for entry in host_mismatch_entries:
+                bad_host = _url_host(entry["url"])
+                result = _attach_association({
+                    "url": entry["url"], "iid": None, "project": None, "title": "", "mr_tickets": [],
+                    "status": "ERROR",
+                    "detail": (
+                        f"refused: host '{bad_host}' does not match the other MR URLs in "
+                        f"this CSV ('{expected_host}') — not queried, to avoid sending your "
+                        f"token to an unexpected host"
+                    ),
                 }, entry)
                 results.append(result)
                 log_queue.put({"type": "result", "result": result})
@@ -745,6 +798,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "could not parse MR url"}, 400)
             return
         host, project_path, iid = m.group(1), m.group(2), m.group(3)
+        if not _is_vetted_host(host):
+            self._send_json({"error": f"host '{host}' has not been checked via /api/check in this session — run Check now first"}, 400)
+            return
         enc_path = urllib.parse.quote(project_path, safe="")
 
         result, err = get_mr_diff_files(host, token, enc_path, iid, target_branch, insecure)

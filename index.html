@@ -550,8 +550,8 @@ function renderTable() {
       <td>${escapeHtml([...r.teams].join(', '))}</td>
       <td>${renderTicketCell(r)}</td>
       <td>${r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.iid ? '!' + r.iid : r.url}</a>` : '<span style="color:var(--muted);">—</span>'}</td>
-      <td>${r.project || ''}</td>
-      <td>${r.title || ''}</td>
+      <td>${escapeHtml(r.project || '')}</td>
+      <td>${escapeHtml(r.title || '')}</td>
       <td>${renderDetail(r.detail)}</td>
       <td>${r.url ? `<button class="link-btn" data-idx="${i}">View diff</button>` : ''}</td>
     </tr>
