@@ -297,6 +297,11 @@
       </div>
     </div>
 
+    <div class="checkbox-row">
+      <input type="checkbox" id="insecureSsl" />
+      <label for="insecureSsl">Skip SSL certificate verification (only for internal GitLab with untrusted cert)</label>
+    </div>
+
     <button id="runBtn">Check now</button>
     <div id="status-line"></div>
 
@@ -388,6 +393,7 @@ runBtn.addEventListener('click', async () => {
   const token = document.getElementById('token').value.trim();
   const branch = document.getElementById('branch').value.trim();
   const fileInput = document.getElementById('csvfile');
+  const insecureSsl = document.getElementById('insecureSsl').checked;
 
   if (!token || !branch || !fileInput.files.length) {
     statusLine.textContent = 'Please fill in the token, target branch, and select a CSV file';
@@ -408,7 +414,7 @@ runBtn.addEventListener('click', async () => {
     const resp = await fetch('/api/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, target_branch: branch, csv_text: csvText }),
+      body: JSON.stringify({ token, target_branch: branch, csv_text: csvText, insecure_ssl: insecureSsl }),
     });
 
     if (!resp.ok) {
@@ -689,6 +695,7 @@ function renderDiffText(diffText, targetLines) {
 async function openDiffModal(row) {
   const token = document.getElementById('token').value.trim();
   const branch = document.getElementById('branch').value.trim();
+  const insecureSsl = document.getElementById('insecureSsl').checked;
 
   diffModalTitle.textContent = row.title ? `${row.iid ? '!' + row.iid + ' — ' : ''}${row.title}` : 'Diff';
   diffModalBody.innerHTML = 'Loading...';
@@ -703,7 +710,7 @@ async function openDiffModal(row) {
     const resp = await fetch('/api/mr-diff', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, url: row.url, target_branch: branch }),
+      body: JSON.stringify({ token, url: row.url, target_branch: branch, insecure_ssl: insecureSsl }),
     });
     const data = await resp.json();
 
